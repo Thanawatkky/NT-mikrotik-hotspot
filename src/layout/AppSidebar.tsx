@@ -8,7 +8,6 @@ import {
   ChevronDownIcon,
   GridIcon,
   HorizontaLDots,
-  UserCircleIcon,
 } from "../icons/index";
 import { RouterIcon, User2Icon } from "lucide-react";
 
@@ -34,11 +33,6 @@ const navItems: NavItem[] = [
     icon: <RouterIcon />,
     name: "Router",
     path: "/router",
-  },
-  {
-    icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
   },
 
   

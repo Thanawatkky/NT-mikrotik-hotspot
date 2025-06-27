@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Next.js application service
+  web:
+    build: .
+    ports:
+      - "3000:3000" # Map port 3000 for Next.js
+      - "4000:4000" # Map port 4000 for Socket.IO
+    environment:
+      # DATABASE_URL for Prisma. 'db' is the service name for MariaDB in Docker Compose
+      DATABASE_URL: "mysql://enntspbHotspot:Local@1234@db:3306/db_hotspot"
+      NODE_ENV: production # Set to production for the Docker environment
+      # PORT and HOSTNAME are generally handled by Next.js itself within the container
+      # But you can explicitly set them if your app depends on them:
+      # PORT: 3000
+      # HOSTNAME: 0.0.0.0 # Use 0.0.0.0 to listen on all interfaces inside the container
+    depends_on:
+      - db # Ensure the database service starts before the web service
+    restart: unless-stopped # Automatically restart if the container stops unexpectedly
+
+  # MariaDB database service
+  db:
+    image: mariadb:10.6 # Using MariaDB version 10.6
+    ports:
+      - "3306:3306" # Expose MariaDB port to your host (optional, for direct access)
+    environment:
+      MYSQL_ROOT_PASSWORD: "Local@1234" # Set the root password for MariaDB
+      MYSQL_DATABASE: "db_hotspot" # Create this database when the container starts
+      # MYSQL_USER and MYSQL_PASSWORD are not strictly needed here if you use root for DATABASE_URL
+      # But it's good practice for production:
+      MYSQL_USER: "enntspbHotspot"
+      MYSQL_PASSWORD: "Local@1234" # Set a user password for MariaDB
+    volumes:
+      - db_data:/var/lib/mysql # Persist database data to a named volume
+    restart: unless-stopped # Automatically restart if the container stops unexpectedly
+
+volumes:
+  db_data: # Define the volume for database persistence

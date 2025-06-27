@@ -1,276 +1,284 @@
-'use client'
-import { ArrowUpDownIcon, Loader2Icon, RefreshCwIcon } from 'lucide-react'
-import React, { useState, useEffect } from 'react'
+"use client"
 
+import * as React from "react"
+import {
+  ColumnDef,
+  ColumnFiltersState,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  SortingState,
+  useReactTable,
+  VisibilityState,
+} from "@tanstack/react-table"
+import { ArrowUpDown, RefreshCcwIcon, User } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 
-// Type based on your Prisma model
-type User = {
-  id: number
+import { Input } from "@/components/ui/input"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+import useSWR from "swr"
+
+// Updated Router type to match your database model
+export type Users = {
+  id: number // Primary key (r_id in database)
   name: string
-  description: string | null
-  routerId: number
-  router?: {
+  description?: string
+  router: {
     id: number
-    sitename?: string
+    sitename: string
   }
 }
 
-export default function UsersTable() {
-  const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [sortField, setSortField] = useState<keyof User>('id')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
-  const [nameFilter, setNameFilter] = useState('')
-  const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set())
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize] = useState(10)
+// User type for the relation (if needed)
+export type User = {
+  id: number
+  // Add other user fields as needed
+}
 
-  // Fetch users data
-  const fetchUsers = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await fetch('/api/users')
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch users: ${response.status} ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      setUsers(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch users')
-      console.error('Error fetching users:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
+ 
 
-  useEffect(() => {
-    fetchUsers()
-  }, [])
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-  // Filter and sort users
-  const filteredUsers = users
-    .filter(user => 
-      user.name.toLowerCase().includes(nameFilter.toLowerCase())
-    )
-    .sort((a, b) => {
-      const aValue = a[sortField]
-      const bValue = b[sortField]
-      
-      if (aValue == null && bValue == null) return 0
-      if (aValue == null) return 1
-      if (bValue == null) return -1
-      
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
-      return 0
-    })
+export function UsersTable() {
+  const [sorting, setSorting] = React.useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
+  const [rowSelection, setRowSelection] = React.useState({})
+  const [UserData, setUserData] = React.useState<Users[]>([])
+  const { data, error, isLoading, mutate } = useSWR("/api/users", fetcher)
 
-  // Pagination
-  const totalPages = Math.ceil(filteredUsers.length / pageSize)
-  const startIndex = (currentPage - 1) * pageSize
-  const paginatedUsers = filteredUsers.slice(startIndex, startIndex + pageSize)
-
-  const handleSort = (field: keyof User) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDirection('asc')
-    }
-  }
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedUsers(new Set(paginatedUsers.map(user => user.id)))
-    } else {
-      setSelectedUsers(new Set())
-    }
-  }
-
-  const handleSelectUser = (userId: number, checked: boolean) => {
-    const newSelected = new Set(selectedUsers)
-    if (checked) {
-      newSelected.add(userId)
-    } else {
-      newSelected.delete(userId)
-    }
-    setSelectedUsers(newSelected)
-  }
-
-
-  if (loading) {
-    return (
-      <div className="w-full max-w-6xl mx-auto p-6">
-        <div className="flex items-center justify-center py-12">
-          <Loader2Icon className="h-8 w-8 animate-spin mr-3 text-blue-600" />
-          <span className="text-lg">Loading users...</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="w-full max-w-6xl mx-auto p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
-          <div className="text-red-600 mb-2 font-semibold">Error loading users</div>
-          <p className="text-red-500 mb-4">{error}</p>
-          <button 
-            onClick={fetchUsers}
-            className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+  
+  const columns: ColumnDef<Users>[] = [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
+      accessorKey: "id",
+      header: "#",
+      cell: ({ row }) => (
+        <div className="font-mono">{row.index + 1}</div>
+      ),
+    },
+    {
+      accessorKey: "name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           >
-            <RefreshCwIcon className="h-4 w-4 mr-2" />
-            Retry
-          </button>
-        </div>
-      </div>
-    )
+            User Name
+            <ArrowUpDown />
+          </Button>
+        )
+      },
+      cell: ({ row }) => (
+        <div className="font-medium">{row.getValue("name")}</div>
+      ),
+    },
+    {
+      accessorKey: "description",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Description
+            <ArrowUpDown />
+          </Button>
+        )
+      },
+      cell: ({ row }) => (
+        <div className="font-medium">{row.getValue("description")}</div>
+      ),
+    },
+    {
+      accessorKey: "router.sitename",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Router Site
+            <ArrowUpDown />
+          </Button>
+        )
+      },
+      cell: ({ row }) => <div className="font-mono">{row.original.router.sitename}</div>,
+    },
+    
+  
+   
+  ]
+  // Update router data when SWR data changes
+  React.useEffect(() => {
+    if (data) {
+      setUserData(data)
+    }
+  }, [data])
+
+  // Cleanup socket on component unmount
+
+
+  const table = useReactTable({
+    data: UserData,
+    columns,
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
+  
+    state: {
+      sorting,
+      columnFilters,
+      columnVisibility,
+      rowSelection,
+
+    },
+  })
+  
+  // Show loading state
+  if (isLoading) {
+    return <div className="w-full p-4">Loading users...</div>
+  }
+
+  // Show error state
+  if (error) {
+    return <div className="w-full p-4 text-red-500">Error loading users: {error.message}</div>
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto p-6">
-      <div className="bg-white rounded-lg shadow-lg">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">Users</h2>
-            <button 
-              onClick={fetchUsers}
-              className="inline-flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <RefreshCwIcon className="h-4 w-4 mr-2" />
-              Refresh
-            </button>
-          </div>
+    <div className="w-full">
+      
+      <div className="flex justify-between items-center py-4">
+        <Input
+          placeholder="Filter by User name..."
+          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+          onChange={(event) =>
+            table.getColumn("name")?.setFilterValue(event.target.value)
+          }
+          className="max-w-sm"
+        />
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => mutate()}
+            > <RefreshCcwIcon/> Refresh </Button>
           
-          {/* Filter */}
-          <div className="flex items-center space-x-4">
-            <input
-              type="text"
-              placeholder="Filter by name..."
-              value={nameFilter}
-              onChange={(e) => setNameFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <div className="text-sm text-gray-500">
-              {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} found
-            </div>
-          </div>
         </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left">
-                  <input
-                    type="checkbox"
-                    checked={paginatedUsers.length > 0 && paginatedUsers.every(user => selectedUsers.has(user.id))}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <button
-                    onClick={() => handleSort('id')}
-                    className="flex items-center space-x-1 hover:text-gray-700"
-                  >
-                    <span>ID</span>
-                    <ArrowUpDownIcon />
-                  </button>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <button
-                    onClick={() => handleSort('name')}
-                    className="flex items-center space-x-1 hover:text-gray-700"
-                  >
-                    <span>Name</span>
-                    <ArrowUpDownIcon />
-                  </button>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <button
-                    onClick={() => handleSort('routerId')}
-                    className="flex items-center space-x-1 hover:text-gray-700"
-                  >
-                    <span>Router</span>
-                    <ArrowUpDownIcon />
-                  </button>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedUsers.length > 0 ? (
-                paginatedUsers.map((user) => (
-                  <tr key={user.id} className={`hover:bg-gray-50 ${selectedUsers.has(user.id) ? 'bg-blue-50' : ''}`}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={selectedUsers.has(user.id)}
-                        onChange={(e) => handleSelectUser(user.id, e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                      {user.id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {user.name}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                      {user.description || 'No description'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                      {user.router?.sitename}
-                    </td>
-                  
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                    No users found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                    </TableHead>
+                  )
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  No routers found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <div className="text-muted-foreground flex-1 text-sm">
+          {table.getFilteredSelectedRowModel().rows.length} of{" "}
+          {table.getFilteredRowModel().rows.length} row(s) selected.
         </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            {selectedUsers.size} of {filteredUsers.length} row(s) selected.
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setCurrentPage(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="px-3 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Previous
-            </button>
-            <span className="text-sm text-gray-700">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Next
-            </button>
-          </div>
+        <div className="space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            Next
+          </Button>
         </div>
       </div>
     </div>
+
+    
   )
 }

@@ -1,0 +1,40 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// 1. Define datasource and generator
+datasource db {
+  provider = "mysql" // หรือ mysql, sqlite ตามที่คุณใช้
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+
+model Router {
+  // Primary Key
+  id      Int    @id @default(autoincrement()) @map("r_id")
+  sitename    String
+  username  String
+  password  String
+  ip     String
+  port_api String
+  status   Int @default(0)
+  port_hst String
+  users   User[]
+
+  @@map("tb_router")
+}
+
+model User {
+  // Primary Key
+  id          Int     @id @default(autoincrement()) @map("user_id")
+  name        String
+  description String? // เครื่องหมาย ? หมายถึง optional (อาจเป็น null ได้)
+  routerId    Int     @map("r_id")
+  router      Router  @relation(fields: [routerId], references: [id])
+
+  @@map("tb_user")
+}

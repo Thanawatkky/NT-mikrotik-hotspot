@@ -31,10 +31,10 @@ model Router {
 model User {
   // Primary Key
   id          Int     @id @default(autoincrement()) @map("user_id")
-  name        String
-  description String? // เครื่องหมาย ? หมายถึง optional (อาจเป็น null ได้)
+  name        String 
+  description String? 
   routerId    Int     @map("r_id")
-  router      Router  @relation(fields: [routerId], references: [id])
-
+  router      Router  @relation(fields: [routerId], references: [id], onDelete: Cascade)
+  @@unique([name, routerId], name: "name_routerId")
   @@map("tb_user")
 }

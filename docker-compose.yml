@@ -2,22 +2,22 @@ version: '3.8'
 
 services:
   # Next.js application service
-  web:
-    build: .
-    ports:
-      - "3000:3000" # Map port 3000 for Next.js
-      - "4000:4000" # Map port 4000 for Socket.IO
-    environment:
-      # DATABASE_URL for Prisma. 'db' is the service name for MariaDB in Docker Compose
-      DATABASE_URL: "mysql://enntspbHotspot:Local@1234@db:3306/db_hotspot"
-      NODE_ENV: production # Set to production for the Docker environment
-      # PORT and HOSTNAME are generally handled by Next.js itself within the container
-      # But you can explicitly set them if your app depends on them:
-      # PORT: 3000
-      # HOSTNAME: 0.0.0.0 # Use 0.0.0.0 to listen on all interfaces inside the container
-    depends_on:
-      - db # Ensure the database service starts before the web service
-    restart: unless-stopped # Automatically restart if the container stops unexpectedly
+  # web:
+  #   build: .
+  #   ports:
+  #     - "3000:3000" # Map port 3000 for Next.js
+  #     - "4000:4000" # Map port 4000 for Socket.IO
+  #   environment:
+  #     # DATABASE_URL for Prisma. 'db' is the service name for MariaDB in Docker Compose
+  #     DATABASE_URL: "mysql://enntspbHotspot:Local@1234@db:3306/db_hotspot"
+  #     NODE_ENV: production # Set to production for the Docker environment
+  #     # PORT and HOSTNAME are generally handled by Next.js itself within the container
+  #     # But you can explicitly set them if your app depends on them:
+  #     # PORT: 3000
+  #     # HOSTNAME: 0.0.0.0 # Use 0.0.0.0 to listen on all interfaces inside the container
+  #   depends_on:
+  #     - db # Ensure the database service starts before the web service
+  #   restart: unless-stopped # Automatically restart if the container stops unexpectedly
 
   # MariaDB database service
   db:
@@ -34,6 +34,16 @@ services:
     volumes:
       - db_data:/var/lib/mysql # Persist database data to a named volume
     restart: unless-stopped # Automatically restart if the container stops unexpectedly
-
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8080:80" # Map port 8080 for phpMyAdmin access
+    environment:
+      PMA_HOST: db # Connect phpMyAdmin to the 'db' service
+      PMA_USER: "enntspbHotspot" # Use the same user as defined in the db service
+      PMA_PASSWORD: "Local@1234" # Use the same password as defined in the db service
+    depends_on:
+      - db # Ensure the database service starts before phpMyAdmin
+    restart: unless-stopped # Automatically restart if the container stops unexpectedly
 volumes:
   db_data: # Define the volume for database persistence

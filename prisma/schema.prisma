@@ -1,9 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// 1. Define datasource and generator
 datasource db {
-  provider = "mysql" // หรือ mysql, sqlite ตามที่คุณใช้
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -11,30 +7,91 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ==========================================
+// 1. ตารางกลุ่มผู้ดูแลระบบ (Internal User / Staff)
+// ==========================================
+enum SystemRole {
+  ADMIN
+  MANAGER
+  STAFF
+}
 
+model User {
+  id           Int        @id @default(autoincrement()) @map("user_id")
+  email        String     @unique
+  name         String
+  password     String     
+  role         SystemRole @default(STAFF)            // แบ่งสิทธิ์ตามที่คุณต้องการ
+  description  String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
 
+  // Relations
+  refreshTokens RefreshToken[]
+
+  @@map("tb_user")
+}
+
+// ตารางเก็บเซสชันการล็อกอินของผู้ดูแลระบบ (ใช้ร่วมกับ Auth.js คอนฟิกก่อนหน้านี้)
+model RefreshToken {
+  id         Int      @id @default(autoincrement())
+  token      String   @unique @db.VarChar(500)
+  userId     Int      @map("user_id")
+  deviceInfo String?  @map("device_info")
+  ipAddress  String?  @map("ip_address")
+  isRevoked  Boolean  @default(false)
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("tb_refresh_token")
+}
+
+// ==========================================
+// 2. ตารางเราเตอร์ (MikroTik Devices)
+// ==========================================
 model Router {
-  // Primary Key
-  id      Int    @id @default(autoincrement()) @map("r_id")
-  sitename    String
-  username  String
-  password  String
-  ip     String
-  port_api String
-  status   Int @default(0)
-  port_hst String
-  users   User[]
+  id        Int      @id @default(autoincrement()) @map("r_id")
+  sitename  String
+  username  String   // Username ผูกกับ API MikroTik
+  password  String   // Password ผูกกับ API MikroTik
+  ip        String
+  port_api  String
+  port_hst  String
+  status    Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  hotspotUsers HotspotUser[] // เราเตอร์ 1 ตัว มีคนใช้งานได้หลายคน
 
   @@map("tb_router")
 }
 
-model User {
-  // Primary Key
-  id          Int     @id @default(autoincrement()) @map("user_id")
-  name        String 
-  description String? 
-  routerId    Int     @map("r_id")
-  router      Router  @relation(fields: [routerId], references: [id], onDelete: Cascade)
-  @@unique([name, routerId], name: "name_routerId")
-  @@map("tb_user")
+// ==========================================
+// 3. ตารางผู้ใช้งาน Wi-Fi (Hotspot Users / Vouchers)
+// ==========================================
+model HotspotUser {
+  id          Int       @id @default(autoincrement()) @map("hs_user_id")
+  username    String    // รหัสตั๋ว หรือ Username ที่ลูกค้าใช้ Login Wi-Fi
+  password    String    // Password สำหรับเข้า Wi-Fi
+  profile     String    // ความเร็ว/แพ็กเกจบน MikroTik (เช่น 30_Days, 1_Hour)
+  status      String    @default("PENDING") // PENDING, ACTIVE, EXPIRED
+  
+  // อ้างอิง ID จาก Router ตัวที่ลูกค้าล็อกอินเข้ามาใช้งาน
+  routerId    Int       @map("r_id")
+  
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  router Router @relation(fields: [routerId], references: [id], onDelete: Cascade)
+
+  // ป้องกัน Username ซ้ำกัน "เฉพาะภายในเราเตอร์ตัวเดียวกัน" 
+  // (เช่น เราเตอร์ตึก A มี user 'wifi01' ได้ และเราเตอร์ตึก B ก็มี 'wifi01' ได้โดยไม่ตีกัน)
+  @@unique([username, routerId], name: "username_routerId")
+  @@map("tb_hotspot_user")
 }

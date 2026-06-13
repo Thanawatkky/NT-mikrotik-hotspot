@@ -1,44 +1,69 @@
-// /middleware.ts
+// middleware.ts
+import { NextResponse } from "next/server"
+import NextAuth from "next-auth"
+import { authConfig } from "./auth.config"
 
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextRequest, NextResponse } from 'next/server';
-const isProtectedRoute = createRouteMatcher([
-  '/',           // หน้า Home
-  '/router(.*)', // ทุก path ที่ขึ้นต้นด้วย /router เช่น /router, /router/new
-  '/users(.*)',  // ทุก path ที่ขึ้นต้นด้วย /users เช่น /users, /users/123
-]);
-export default clerkMiddleware(async (auth, req: NextRequest) => {
-  if (isProtectedRoute(req)) await auth.protect()
-  // --- 1. จัดการ Preflight Request (OPTIONS) ก่อนเสมอ ---
-  if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS preflight request');
-    const response = new Response(null, { status: 204 }); // 204 No Content
-    
-    // ใส่ Headers ที่จำเป็นสำหรับการอนุญาต CORS
-    response.headers.set('Access-Control-Allow-Origin', '*'); // ใน Production ควรระบุ Domain จริง
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    
-    return response;
+const { auth } = NextAuth(authConfig)
+
+// 1. กำหนดสิทธิ์ในการเข้าถึงแต่ละเส้นทาง (Access Control List)
+const ROLE_ROUTES = {
+  // หน้าสำหรับ ADMIN เท่านั้น (เช่น จัดการพนักงาน, ลบเราเตอร์)
+  ADMIN: ["/dashboard/admin", "/dashboard/users-management"],
+  
+  // หน้าสำหรับ MANAGER ขึ้นไป (STAFF ห้ามเข้า เช่น สรุปยอดรายได้, ปรับแพ็กเกจราคา)
+  MANAGER: ["/dashboard/reports", "/dashboard/packages"],
+  
+  // หน้าพื้นฐานที่ STAFF, MANAGER, ADMIN เข้าได้ทั้งหมด (เช่น เจนตั๋ว Hotspot, ดูสถานะเราเตอร์)
+  STAFF: ["/dashboard", "/dashboard/vouchers", "/dashboard/router-status"]
+}
+
+export default auth((req) => {
+  const isLoggedIn = !!req.auth
+  const userRole = req.auth?.user?.role as string | undefined // ดึง Role จาก Token
+  const { nextUrl } = req
+  const pathname = nextUrl.pathname
+
+  // -------------------------------------------------------------
+  // กฎข้อที่ 1: จัดการคนยังไม่ได้ล็อกอิน (Authentication Check)
+  // -------------------------------------------------------------
+  const isDashboardRoute = pathname.startsWith("/dashboard")
+  const isLoginRoute = pathname === "/login"
+
+  if (isDashboardRoute && !isLoggedIn) {
+    let callbackUrl = pathname
+    if (nextUrl.search) callbackUrl += nextUrl.search
+    return NextResponse.redirect(
+      new URL(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`, nextUrl)
+    )
   }
 
-  // --- 2. สำหรับ Request จริง (GET, POST, etc.) ---
-  // Clerk จะจัดการ auth ตรงนี้โดยอัตโนมัติ
+  if (isLoginRoute && isLoggedIn) {
+    return NextResponse.redirect(new URL("/dashboard", nextUrl))
+  }
 
-  // สร้าง Response เพื่อไปต่อ
-  const response = NextResponse.next();
+  // -------------------------------------------------------------
+  // กฎข้อที่ 2: ตรวจสอบระดับสิทธิ์ (Authorization Check)
+  // -------------------------------------------------------------
+  if (isLoggedIn && userRole) {
+    
+    // ตรวจสอบหน้าของ ADMIN: ถ้าไม่ใช่ ADMIN แต่พยายามเข้ามา -> ดีดไปหน้าปฏิเสธสิทธิ์
+    const isAdminRoute = ROLE_ROUTES.ADMIN.some(route => pathname.startsWith(route))
+    if (isAdminRoute && userRole !== "ADMIN") {
+      return NextResponse.redirect(new URL("/dashboard/error/unauthorized", nextUrl))
+    }
 
-  // เพิ่ม Header อนุญาต Origin ให้กับ Response ของ Request จริงด้วย
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  
-  return response;
-});
+    // ตรวจสอบหน้าของ MANAGER: STAFF ห้ามเข้า (เข้าได้แค่ ADMIN และ MANAGER)
+    const isManagerRoute = ROLE_ROUTES.MANAGER.some(route => pathname.startsWith(route))
+    if (isManagerRoute && userRole === "STAFF") {
+      return NextResponse.redirect(new URL("/dashboard/error/unauthorized", nextUrl))
+    }
+    
+    // หมายเหตุ: สำหรับเส้นทาง STAFF ทุกคน (รวมถึง ADMIN/MANAGER) เข้าถึงได้อยู่แล้วตามธรรมชาติ
+  }
+
+  return NextResponse.next()
+})
 
 export const config = {
-  matcher: [
-    // Skip Next.js internals and all static files
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    // Always run for API routes
-    '/(api|trpc)(.*)',
-  ],
-};
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+}

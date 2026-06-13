@@ -13,7 +13,7 @@ import {
   useReactTable,
   VisibilityState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, RefreshCcwIcon, User } from "lucide-react"
+import { ArrowUpDown, PlusCircleIcon, RefreshCcwIcon, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 
@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/table"
 
 import useSWR from "swr"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog"
+import { Label } from "../ui/label"
 
 // Updated Router type to match your database model
 export type Users = {
@@ -45,13 +47,18 @@ export type User = {
   id: number
   // Add other user fields as needed
 }
-
  
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
+const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  
+}
 export function UsersTable() {
   const [sorting, setSorting] = React.useState<SortingState>([])
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [addUserData, setAddUserData] = React.useState<Users | null>(null)
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
@@ -123,21 +130,7 @@ export function UsersTable() {
         <div className="font-medium">{row.getValue("description")}</div>
       ),
     },
-    {
-      accessorKey: "router.sitename",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Router Site
-            <ArrowUpDown />
-          </Button>
-        )
-      },
-      cell: ({ row }) => <div className="font-mono">{row.original.router.sitename}</div>,
-    },
+  
     
   
    
@@ -195,13 +188,55 @@ export function UsersTable() {
           }
           className="max-w-sm"
         />
+
+
         <div className="flex gap-2">
           <Button
             variant="outline"
             onClick={() => mutate()}
-            > <RefreshCcwIcon/> Refresh </Button>
-          
+            > <RefreshCcwIcon/> Refresh </Button>         
+             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(true)}
+                    > <PlusCircleIcon /> Add </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <form onSubmit={handleSubmit}>
+                        <DialogHeader>
+                          <DialogTitle>Add New User</DialogTitle>
+                          <DialogDescription>
+                            Enter user details to add to the system
+                          </DialogDescription>
+                        </DialogHeader>
+                        
+                        <div className="grid gap-4 grid-cols-2 py-4">
+                          
+                          <div className="grid gap-2">
+                            <Label htmlFor="fullname">ชื่อ-นามสกุล</Label>
+                            <Input 
+                              id="fullname" 
+                              name="fullname" 
+                              type="fullname"
+                              onChange={(e) => setAddUserData({...addUserData, name: String(e.target.value) } as Users)} 
+                              value={addUserData?.name || ""} 
+                              className="font-mono"
+                              aria-required="true"
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>  
+                          <DialogClose asChild>
+                            <Button type="button" variant="outline">Cancel</Button>
+                          </DialogClose>
+                          <Button type="submit">Add Router</Button>
+                        </DialogFooter>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
         </div>
+               
       </div>
       <div className="rounded-md border">
         <Table>

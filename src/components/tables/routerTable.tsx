@@ -268,44 +268,44 @@ export function RouterDetailTable() {
     },
   ]
   // Initialize socket connection and handle status updates
-  React.useEffect(() => {
-    // Initialize socket connection
-    if (!socketRef.current) {
-      socketRef.current = io('http://localhost:4000')
+  // React.useEffect(() => {
+  //   // Initialize socket connection
+  //   if (!socketRef.current) {
+  //     socketRef.current = io('http://localhost:4000')
       
-      socketRef.current.on('connect', () => {
-        console.log('Socket connected')
-      })
+  //     socketRef.current.on('connect', () => {
+  //       console.log('Socket connected')
+  //     })
 
-      socketRef.current.on('disconnect', () => {
-        console.log('Socket disconnected')
-      })
+  //     socketRef.current.on('disconnect', () => {
+  //       console.log('Socket disconnected')
+  //     })
 
-      socketRef.current.on('router-status', (statusUpdate: { id: number, status: number }) => {
-        setRouterData(prevData => 
-          prevData.map(router => 
-            router.id === statusUpdate.id 
-              ? { ...router, status: statusUpdate.status }
-              : router
-          )
-        )
-      })
+  //     socketRef.current.on('router-status', (statusUpdate: { id: number, status: number }) => {
+  //       setRouterData(prevData => 
+  //         prevData.map(router => 
+  //           router.id === statusUpdate.id 
+  //             ? { ...router, status: statusUpdate.status }
+  //             : router
+  //         )
+  //       )
+  //     })
 
-      socketRef.current.on('connect_error', (error) => {
-        console.error('Socket connection error:', error)
-      })
-    }
+  //     socketRef.current.on('connect_error', (error) => {
+  //       console.error('Socket connection error:', error)
+  //     })
+  //   }
 
-    return () => {
-      // Don't disconnect on every cleanup, just remove listeners
-      if (socketRef.current) {
-        socketRef.current.off('router-status')
-        socketRef.current.off('connect')
-        socketRef.current.off('disconnect')
-        socketRef.current.off('connect_error')
-      }
-    }
-  }, [])
+  //   return () => {
+  //     // Don't disconnect on every cleanup, just remove listeners
+  //     if (socketRef.current) {
+  //       socketRef.current.off('router-status')
+  //       socketRef.current.off('connect')
+  //       socketRef.current.off('disconnect')
+  //       socketRef.current.off('connect_error')
+  //     }
+  //   }
+  // }, [])
 
   // Update router data when SWR data changes
   React.useEffect(() => {
@@ -315,14 +315,14 @@ export function RouterDetailTable() {
   }, [data])
 
   // Cleanup socket on component unmount
-  React.useEffect(() => {
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-        socketRef.current = null
-      }
-    }
-  }, [])
+  // React.useEffect(() => {
+  //   return () => {
+  //     if (socketRef.current) {
+  //       socketRef.current.disconnect()
+  //       socketRef.current = null
+  //     }
+  //   }
+  // }, [])
 
   const table = useReactTable({
     data: routerData,

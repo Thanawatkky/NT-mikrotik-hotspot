@@ -1,7 +1,10 @@
 "use client";
+import { signOut } from "next-auth/react";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
+import { Button } from "@/components/ui/button";
 
 import { useSidebar } from "@/context/SidebarContext";
+import { LogIn, LucideLogOut } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState ,useEffect,useRef} from "react";
@@ -18,6 +21,13 @@ const AppHeader: React.FC = () => {
       toggleMobileSidebar();
     }
   };
+
+  const handleSignOut = async () => {
+    await signOut({
+      redirect: true,
+      redirectTo: "/login"
+    });
+  }
 
   const toggleApplicationMenu = () => {
     setApplicationMenuOpen(!isApplicationMenuOpen);
@@ -162,6 +172,9 @@ const AppHeader: React.FC = () => {
           <div className="flex items-center gap-2 2xsm:gap-3">
             {/* <!-- Dark Mode Toggler --> */}
             <ThemeToggleButton />
+            <Button onClick={handleSignOut} variant="outline" size="sm" className="px-3 2xsm:px-4">
+              <LucideLogOut className="w-4 h-4 mr-1" />
+            </Button>
 
           </div>
 

@@ -1,26 +1,29 @@
-// auth.config.ts
-import type { NextAuthConfig } from "next-auth"
+import type { NextAuthConfig } from "next-auth";
 
 export const authConfig = {
   session: { strategy: "jwt" },
-  providers: [], // ปล่อยว่างไว้ตรงนี้ก่อน ค่อยไปใส่ใน auth.ts
+  providers: [],
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id
-        token.role = user.role
+        token.id = user.id;
+        token.role = user.role;
+        token.tenantId = user.tenantId ?? null;
+        token.status = user.status;
       }
-      return token
+      return token;
     },
     async session({ session, token }) {
       if (session.user && token) {
-        session.user.id = token.id as string
-        session.user.role = token.role as string
+        session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        session.user.tenantId = (token.tenantId as string | null) ?? null;
+        session.user.status = token.status as string;
       }
-      return session
+      return session;
     },
   },
   pages: {
     signIn: "/login",
   },
-} satisfies NextAuthConfig
+} satisfies NextAuthConfig;

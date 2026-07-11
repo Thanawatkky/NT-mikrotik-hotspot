@@ -58,8 +58,7 @@ export function RouterDetailTableDashboard() {
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
 
-  const [routerData, setRouterData] = React.useState<Router[]>([])
-  const { data, error, isLoading, mutate } = useSWR("/api/routers", fetcher)
+  const { data = [], error, isLoading, mutate } = useSWR<Router[]>("/api/routers", fetcher)
   // const socketRef = React.useRef<Socket | null>(null)
 
   const columns: ColumnDef<Router>[] = [
@@ -216,7 +215,7 @@ export function RouterDetailTableDashboard() {
   // }, [])
 
   const table = useReactTable({
-    data: routerData,
+    data,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,

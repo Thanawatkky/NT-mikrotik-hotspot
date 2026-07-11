@@ -4,7 +4,7 @@ import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import { Button } from "@/components/ui/button";
 
 import { useSidebar } from "@/context/SidebarContext";
-import { LogIn, LucideLogOut } from "lucide-react";
+import { LucideLogOut } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState ,useEffect,useRef} from "react";

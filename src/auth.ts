@@ -1,12 +1,12 @@
-// auth.ts
-import NextAuth from "next-auth"
-import Credentials from "next-auth/providers/credentials"
-import bcrypt from "bcryptjs" // เปลี่ยนเป็น bcryptjs แล้ว
-import { prisma } from "./lib/db"
-import { authConfig } from "./auth.config"
+import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs";
+import { UserStatus } from "@prisma/client";
+import { authConfig } from "./auth.config";
+import { prisma } from "./lib/db";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  ...authConfig, // ดึงค่าคอนฟิกพื้นฐานมาใช้
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -14,35 +14,44 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       authorize: async (credentials) => {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password are required.")
+        const email = String(credentials?.email || "").trim().toLowerCase();
+        const password = String(credentials?.password || "");
+
+        if (!email || !password) {
+          throw new Error("Email and password are required.");
         }
-        
+
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        })
-        
-        // ปรับชื่อฟิลด์ให้ตรงกับตารางที่คุณแก้ในบทเรียนก่อนหน้า (passwordHash)
-        if (!user || !user.password) {
-          throw new Error("Invalid credentials.")
+          where: { email },
+        });
+
+        if (!user?.password || user.status !== UserStatus.ACTIVE) {
+          throw new Error("Invalid credentials.");
         }
 
         const isPasswordValid = await bcrypt.compare(
-          credentials.password as string,
+          password,
           user.password
-        )
+        );
 
         if (!isPasswordValid) {
-          throw new Error("Invalid credentials.")
+          throw new Error("Invalid credentials.");
         }
 
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() },
+        });
+
         return {
-          id: user.id.toString(),
-          name: user.name,
+          id: user.id,
+          name: user.displayName,
           email: user.email,
           role: user.role,
-        } as any
+          tenantId: user.tenantId,
+          status: user.status,
+        };
       },
     }),
   ],
-})
+});

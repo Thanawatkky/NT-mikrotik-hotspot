@@ -1,3 +1,8 @@
+// ============================================================
+// schema.prisma
+// Multi-Tenant Hotspot Platform
+// ============================================================
+
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -7,91 +12,321 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// ==========================================
-// 1. ตารางกลุ่มผู้ดูแลระบบ (Internal User / Staff)
-// ==========================================
+// ============================================================
+// ENUMS
+// ============================================================
+
+// ประเภทองค์กร — กำหนดสิทธิ์ Mode ที่ใช้ได้
+enum TenantType {
+  GOVERNMENT        // หน่วยงานรัฐ       → FREE_WIFI, VOUCHER, BOTH
+  STATE_ENTERPRISE  // รัฐวิสาหกิจ        → FREE_WIFI, VOUCHER, BOTH
+  PRIVATE           // เอกชน             → VOUCHER เท่านั้น
+}
+
+// Mode การให้บริการ Wi-Fi
+enum TenantMode {
+  FREE_WIFI // ลงทะเบียนด้วยบัตรประชาชน + เบอร์โทร
+  VOUCHER   // ออก username/password ให้ลูกค้า
+  BOTH      // ใช้ได้ทั้ง 2 แบบพร้อมกัน
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED  // ระงับชั่วคราว เช่น ค้างชำระ
+  EXPIRED    // Subscription หมดอายุ
+  CANCELLED  // ยกเลิกแล้ว
+}
+
+// รอบการชำระเงิน
+enum PlanInterval {
+  MONTHLY
+  YEARLY
+}
+
+// Role ของผู้ใช้งาน Dashboard
 enum SystemRole {
-  ADMIN
-  MANAGER
-  STAFF
+  SUPER_ADMIN     // ผู้พัฒนา/เจ้าของระบบ เข้าได้ทุก Tenant
+  TENANT_ADMIN    // Admin ของแต่ละองค์กร
+  TENANT_MANAGER  // Manager ภายใน Tenant
+  TENANT_STAFF    // Staff ภายใน Tenant
 }
 
-model User {
-  id           Int        @id @default(autoincrement()) @map("user_id")
-  email        String     @unique
-  name         String
-  password     String     
-  role         SystemRole @default(STAFF)            // แบ่งสิทธิ์ตามที่คุณต้องการ
-  description  String?
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-
-  // Relations
-  refreshTokens RefreshToken[]
-
-  @@map("tb_user")
+enum UserStatus {
+  ACTIVE
+  INACTIVE   // ปิดใช้งานชั่วคราว (Soft Delete)
+  SUSPENDED  // ถูกระงับ เช่น Login ผิดหลายครั้ง
 }
 
-// ตารางเก็บเซสชันการล็อกอินของผู้ดูแลระบบ (ใช้ร่วมกับ Auth.js คอนฟิกก่อนหน้านี้)
-model RefreshToken {
-  id         Int      @id @default(autoincrement())
-  token      String   @unique @db.VarChar(500)
-  userId     Int      @map("user_id")
-  deviceInfo String?  @map("device_info")
-  ipAddress  String?  @map("ip_address")
-  isRevoked  Boolean  @default(false)
-  expiresAt  DateTime @map("expires_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("tb_refresh_token")
+enum RouterStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
 }
 
-// ==========================================
-// 2. ตารางเราเตอร์ (MikroTik Devices)
-// ==========================================
-model Router {
-  id        Int      @id @default(autoincrement()) @map("r_id")
-  sitename  String
-  username  String   // Username ผูกกับ API MikroTik
-  password  String   // Password ผูกกับ API MikroTik
-  ip        String
-  port_api  String
-  port_hst  String
-  status    Int      @default(0)
+enum HotspotStatus {
+  PENDING   // ยังไม่ได้ใช้งาน
+  ACTIVE    // กำลังใช้งาน
+  EXPIRED   // หมดอายุ
+  REVOKED   // ถูกยกเลิกก่อนหมดอายุ
+}
+
+// ============================================================
+// 1. PLAN — แพ็กเกจที่ให้บริการ
+// ============================================================
+
+model Plan {
+  id          String     @id @default(cuid()) @map("plan_id")
+  name        String     // "FREE_GOV_BASIC", "VOUCHER_PRO" ฯลฯ
+  description String?
+  mode        TenantMode // Mode ที่ Plan นี้รองรับ
+
+  // ราคา (null = ไม่รองรับรอบนั้น)
+  priceMonthly Decimal? @map("price_monthly") @db.Decimal(10, 2)
+  priceYearly  Decimal? @map("price_yearly") @db.Decimal(10, 2)
+
+  // Limits (-1 = ไม่จำกัด)
+  maxRouters       Int @map("max_routers")       // จำนวน Router สูงสุด
+  maxVouchersMonth Int @map("max_vouchers_month") // Voucher ต่อเดือน (-1 ถ้า FREE_WIFI only)
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@index([mode, isActive])
+  @@map("tb_plan")
+}
+
+// ============================================================
+// 2. TENANT — องค์กร / บริษัทที่ใช้งานระบบ
+// ============================================================
+
+model Tenant {
+  id   String       @id @default(cuid()) @map("tenant_id")
+  name String       // ชื่อองค์กร
+  slug String       @unique // สำหรับ URL เช่น abc.yourdomain.com
+  type TenantType   // ประเภทองค์กร (กำหนดสิทธิ์ Mode)
+  mode TenantMode   // Mode ที่เปิดใช้งานจริงในปัจจุบัน
+  status TenantStatus @default(ACTIVE)
+
+  // ข้อมูลติดต่อ
+  contactName  String? @map("contact_name")
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  hotspotUsers HotspotUser[] // เราเตอร์ 1 ตัว มีคนใช้งานได้หลายคน
+  users        User[]
+  routers      Router[]
+  hotspotUsers HotspotUser[]
+  wifiSessions WifiSession[]
+  subscription Subscription?
 
+  @@index([type, status])
+  @@map("tb_tenant")
+}
+
+// ============================================================
+// 3. SUBSCRIPTION — การสมัครใช้งาน Package
+// ============================================================
+
+model Subscription {
+  id       String       @id @default(cuid()) @map("sub_id")
+  tenantId String       @unique @map("tenant_id")
+  planId   String       @map("plan_id")
+  interval PlanInterval // MONTHLY หรือ YEARLY
+
+  // ช่วงเวลา
+  startAt       DateTime @map("start_at")
+  endAt         DateTime @map("end_at")
+  nextBillingAt DateTime @map("next_billing_at")
+
+  // Snapshot ราคาตอนสมัคร (ป้องกันราคาเปลี่ยนทีหลัง)
+  priceSnapshot Decimal @map("price_snapshot") @db.Decimal(10, 2)
+
+  // Voucher Usage — รีเซ็ตทุกต้นเดือน
+  vouchersUsed    Int      @default(0) @map("vouchers_used")
+  vouchersResetAt DateTime @map("vouchers_reset_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@index([endAt])          // หา Subscription ที่ใกล้หมดอายุ
+  @@index([nextBillingAt])  // สำหรับระบบแจ้งเตือนชำระเงิน
+  @@map("tb_subscription")
+}
+
+// ============================================================
+// 4. PAYMENT — ประวัติการชำระเงิน
+// ============================================================
+
+model Payment {
+  id             String       @id @default(cuid()) @map("payment_id")
+  subscriptionId String       @map("sub_id")
+  amount         Decimal      @db.Decimal(10, 2)
+  interval       PlanInterval
+  paidAt         DateTime?    @map("paid_at") // null = ยังไม่จ่าย / รอยืนยัน
+  note           String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId])
+  @@map("tb_payment")
+}
+
+// ============================================================
+// 5. USER — ผู้ใช้งาน Dashboard (Staff / Admin)
+// ============================================================
+
+model User {
+  id          String     @id @default(cuid()) @map("user_id")
+  email       String     @unique
+  password    String     @map("password_hash") // bcrypt hash เสมอ
+  displayName String     @map("display_name")
+  firstName   String?    @map("first_name")
+  lastName    String?    @map("last_name")
+  avatarUrl   String?    @map("avatar_url")
+  role        SystemRole @default(TENANT_STAFF)
+  status      UserStatus @default(ACTIVE)
+
+  // SUPER_ADMIN → tenantId = null (เข้าถึงได้ทุก Tenant)
+  // TENANT_*    → ต้องมี tenantId เสมอ
+  tenantId String? @map("tenant_id")
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  // Audit
+  lastLoginAt DateTime? @map("last_login_at")
+  lastLoginIp String?   @map("last_login_ip")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // บันทึกว่าใครเป็นคนสร้าง User นี้
+  createdById  String? @map("created_by_id")
+  createdBy    User?   @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdUsers User[]  @relation("UserCreatedBy")
+
+  refreshTokens RefreshToken[]
+
+  @@index([tenantId, role])
+  @@index([email])
+  @@map("tb_user")
+}
+
+// ============================================================
+// 6. REFRESH TOKEN — Session การ Login
+// ============================================================
+
+model RefreshToken {
+  id        String  @id @default(cuid())
+  token     String  @unique @db.VarChar(500)
+  userId    String  @map("user_id")
+  deviceInfo String? @map("device_info")
+  ipAddress  String? @map("ip_address")
+  userAgent  String? @map("user_agent")
+  isRevoked  Boolean  @default(false) @map("is_revoked")
+  revokedAt  DateTime? @map("revoked_at")
+  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])  // สำหรับ cleanup token หมดอายุ
+  @@map("tb_refresh_token")
+}
+
+// ============================================================
+// 7. ROUTER — MikroTik Devices
+// ============================================================
+
+model Router {
+  id          String       @id @default(cuid()) @map("router_id")
+  tenantId    String       @map("tenant_id")
+  sitename    String       @map("site_name")
+  location    String?      // ตึก/ชั้น/โซน
+  username    String       // MikroTik API username
+  password    String       @map("password_encrypted") // AES encrypt ก่อนเก็บ
+  ip          String
+  portApi     Int          @map("port_api") // default 8728
+  portHotspot Int          @map("port_hotspot") // default 8080
+  status      RouterStatus @default(OFFLINE)
+  lastSeenAt  DateTime?    @map("last_seen_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hotspotUsers HotspotUser[]
+  wifiSessions WifiSession[]
+
+  @@index([tenantId, status])
   @@map("tb_router")
 }
 
-// ==========================================
-// 3. ตารางผู้ใช้งาน Wi-Fi (Hotspot Users / Vouchers)
-// ==========================================
+// ============================================================
+// 8. HOTSPOT USER / VOUCHER — สำหรับ VOUCHER Mode
+// ============================================================
+
 model HotspotUser {
-  id          Int       @id @default(autoincrement()) @map("hs_user_id")
-  username    String    // รหัสตั๋ว หรือ Username ที่ลูกค้าใช้ Login Wi-Fi
-  password    String    // Password สำหรับเข้า Wi-Fi
-  profile     String    // ความเร็ว/แพ็กเกจบน MikroTik (เช่น 30_Days, 1_Hour)
-  status      String    @default("PENDING") // PENDING, ACTIVE, EXPIRED
-  
-  // อ้างอิง ID จาก Router ตัวที่ลูกค้าล็อกอินเข้ามาใช้งาน
-  routerId    Int       @map("r_id")
-  
+  id       String        @id @default(cuid()) @map("hs_user_id")
+  tenantId String        @map("tenant_id")
+  routerId String        @map("router_id")
+  username String        // Username ที่ลูกค้าใช้ Login Wi-Fi
+  password String        // Password (plain สำหรับส่งให้ลูกค้า เก็บเป็น hash ใน Router)
+  profile  String        // MikroTik Profile เช่น "30_Days", "1_Hour"
+  status   HotspotStatus @default(PENDING)
+
+  // Audit
+  createdById String?   @map("created_by_id") // STAFF คนไหนออก Voucher
+  activatedAt DateTime? @map("activated_at")  // เริ่มใช้งานจริงเมื่อไหร่
   expiresAt   DateTime? @map("expires_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   router Router @relation(fields: [routerId], references: [id], onDelete: Cascade)
 
-  // ป้องกัน Username ซ้ำกัน "เฉพาะภายในเราเตอร์ตัวเดียวกัน" 
-  // (เช่น เราเตอร์ตึก A มี user 'wifi01' ได้ และเราเตอร์ตึก B ก็มี 'wifi01' ได้โดยไม่ตีกัน)
-  @@unique([username, routerId], name: "username_routerId")
+  // Username ซ้ำกันได้ แต่ต้องคนละ Router
+  @@unique([username, routerId], name: "username_per_router")
+  @@index([tenantId, status])
+  @@index([routerId, status])
+  @@index([expiresAt])          // หา Voucher ที่หมดอายุ
   @@map("tb_hotspot_user")
+}
+
+// ============================================================
+// 9. WIFI SESSION — สำหรับ FREE_WIFI Mode
+//    เก็บข้อมูลตาม PDPA — ห้ามเก็บ Plain Text เด็ดขาด
+// ============================================================
+
+model WifiSession {
+  id       String @id @default(cuid()) @map("session_id")
+  tenantId String @map("tenant_id")
+  routerId String @map("router_id")
+
+  // PDPA Compliant
+  nationalIdHash String @map("national_id_hash") // bcrypt/SHA-256 hash (ค้นหาไม่ได้ แต่ verify ได้)
+  phoneEncrypted String @map("phone_encrypted")  // AES-256 encrypt (ถอดรหัสได้สำหรับ OTP)
+
+  // Network Info
+  macAddress String? @map("mac_address")
+  ipAddress  String? @map("ip_address")
+
+  connectedAt    DateTime  @default(now()) @map("connected_at")
+  disconnectedAt DateTime? @map("disconnected_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  router Router @relation(fields: [routerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([connectedAt]) // Dashboard: ดู traffic รายวัน/เดือน
+  @@map("tb_wifi_session")
 }

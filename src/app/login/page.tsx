@@ -1,29 +1,62 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
+import Image from "next/image"
+import { useRouter, useSearchParams } from "next/navigation"
 import { signIn } from "next-auth/react"
-import { useState } from "react"
+import { Suspense, useState } from "react"
+import type { FormEvent } from "react"
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#FAFAF8]" />}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+const DEFAULT_CALLBACK_URL = "/dashboard"
+
+function getSafeCallbackUrl(callbackUrl: string | null) {
+  if (
+    !callbackUrl ||
+    !callbackUrl.startsWith("/") ||
+    callbackUrl.startsWith("//") ||
+    callbackUrl.startsWith("/login")
+  ) {
+    return DEFAULT_CALLBACK_URL
+  }
+
+  return callbackUrl
+}
+
+function LoginForm() {
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
+  const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"))
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsLoading(true)
     setError("")
 
     const formData = new FormData(event.currentTarget)
-    const email = formData.get("email")
-    const password = formData.get("password")
+    const email = String(formData.get("email") || "").trim().toLowerCase()
+    const password = String(formData.get("password") || "")
+
+    if (!email || !password) {
+      setError("กรุณากรอกอีเมลและรหัสผ่าน")
+      setIsLoading(false)
+      return
+    }
 
     try {
       const result = await signIn("credentials", {
         email,
         password,
+        callbackUrl,
         redirect: false,
       })
 
@@ -31,9 +64,10 @@ export default function LoginPage() {
         setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง")
         setIsLoading(false)
       } else {
-        window.location.href = callbackUrl
+        router.replace(callbackUrl)
+        router.refresh()
       }
-    } catch (err) {
+    } catch {
       setError("เกิดข้อผิดพลาด กรุณาลองใหม่")
       setIsLoading(false)
     }
@@ -423,7 +457,8 @@ export default function LoginPage() {
         {/* Left decorative panel */}
         <div className="login-left">
           <div className="brand-mark">
-                <img src="/images/logo/logo.png" 
+                <Image
+                    src="/images/logo/logo.png" 
                     alt="Logo" 
                     width={100}
                     height={40} 
@@ -452,7 +487,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} noValidate>
             {error && (
-              <div className="error-msg">
+              <div className="error-msg" role="alert" aria-live="polite">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <circle cx="7" cy="7" r="6.5" stroke="#C0392B"/>
                   <path d="M7 4v3.5" stroke="#C0392B" strokeWidth="1.2" strokeLinecap="round"/>

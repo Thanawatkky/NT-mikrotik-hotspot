@@ -14,7 +14,6 @@ import {
   VisibilityState,
 } from "@tanstack/react-table"
 import { ArrowUpDown, MoreHorizontal, PlusCircleIcon, RefreshCcwIcon } from "lucide-react"
-import { io, Socket } from "socket.io-client"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -85,7 +84,6 @@ export function RouterDetailTable() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [routerData, setRouterData] = React.useState<Router[]>([])
   const { data, error, isLoading, mutate } = useSWR("/api/routers", fetcher)
-  const socketRef = React.useRef<Socket | null>(null)
 
   const delRouter = async (routerId: number) => {
 

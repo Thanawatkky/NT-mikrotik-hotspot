@@ -1,19 +1,24 @@
-// ✅ lib/mikrotik.js
-import { getAllRouters, updateRouter } from '@/services/routers-service';
-import { RouterOSAPI } from 'node-routeros';
-import { Server } from 'socket.io';
+import { getAllRouters, updateRouter } from "@/services/routers-service";
+import { RouterStatus } from "@prisma/client";
+import { RouterOSAPI } from "node-routeros";
+import { Server } from "socket.io";
 
 declare global {
-  // eslint-disable-next-line no-var
   var io: Server | undefined;
 }
 
+type RouterPort = string | number;
 
-export async function MikrotikConnection(host: string, user: string, password: string, port: string) {
+export async function MikrotikConnection(
+  host: string,
+  user: string,
+  password: string,
+  port: RouterPort
+) {
   const conn = new RouterOSAPI({
-    host: host,
-    user: user,
-    password: password,
+    host,
+    user,
+    password,
     port: Number(port),
     timeout: 20000,
   });
@@ -22,26 +27,26 @@ export async function MikrotikConnection(host: string, user: string, password: s
     await conn.connect();
     return conn;
   } catch (error) {
-    console.error(`Connection failed:`, error);
-    throw new Error('Failed to communicate with MikroTik router.');
+    console.error("Connection failed:", error);
+    throw new Error("Failed to communicate with MikroTik router.");
   }
 }
 
-async function checkRouter(host: string, user: string, password: string, port: string) {
-  const conn =  new RouterOSAPI({
-    host: host,
-    user: user,
-    password: password,
+async function checkRouter(host: string, user: string, password: string, port: RouterPort) {
+  const conn = new RouterOSAPI({
+    host,
+    user,
+    password,
     port: Number(port),
-    timeout: 20000
+    timeout: 20000,
   });
 
   try {
     await conn.connect();
     await conn.close();
-    return 1;
+    return RouterStatus.ONLINE;
   } catch {
-    return 0;
+    return RouterStatus.OFFLINE;
   }
 }
 
@@ -49,18 +54,20 @@ export async function checkAllRouters() {
   const routers = await getAllRouters();
 
   for (const router of routers) {
-    
-      const status = await checkRouter(router.ip, router.username, router.password, router.port_api);
-      await updateRouter(String(router.id), {
-        status: status
-      });
-      if(global.io) {
-        global.io.emit('router-status', {
-          id: router.id,
-          status: status
-        });
-      }
+    const status = await checkRouter(
+      router.ip,
+      router.username,
+      router.password,
+      router.portApi
+    );
 
+    await updateRouter(router.id, { status });
+
+    if (global.io) {
+      global.io.emit("router-status", {
+        id: router.id,
+        status,
+      });
+    }
   }
-  
 }
